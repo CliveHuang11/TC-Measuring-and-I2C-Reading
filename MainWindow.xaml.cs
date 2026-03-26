@@ -153,12 +153,12 @@ namespace TC_Measuring_and_I2C_Reading
             {
                 Console.WriteLine($"[ERROR] {ex.Message}");
             }
-            var usbData = temperature.ToString("F2");
+            //var usbData = temperature.ToString("F2");
             var i2cData = await Task.Run(() => PerformI2COperation());  // 透過 i2C 讀取 IC 溫度
 
             // 將資料加入 DataTable
-            _testData.Rows.Add(DateTime.Now.ToString("HH:mm:ss"), usbData, i2cData);
-            dmmDataReading.Text = $"Reading = {usbData} C";
+            _testData.Rows.Add(DateTime.Now.ToString("HH:mm:ss"), i2cData, "25"); //, usbData);
+            //dmmDataReading.Text = $"Reading = {usbData} C";
             i2cDataReading.Text = $"Reading = {i2cData}";
             txtStatus.Text = $"已記錄 {_testData.Rows.Count} 筆";
         }
