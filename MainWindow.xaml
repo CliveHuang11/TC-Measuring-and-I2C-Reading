@@ -5,26 +5,26 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:TC_Measuring_and_I2C_Reading"
         mc:Ignorable="d"
-        Title="MainWindow" Height="300" Width="600">
+        Title="MainWindow" Height="500" Width="600">
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="1*"/>
             <ColumnDefinition Width="1*"/>
         </Grid.ColumnDefinitions>
-        <TextBox x:Name="i2cDataReading" HorizontalAlignment="Center" Margin="0,102,0,0" TextWrapping="Wrap" 
-                 Text="Reading = 0x00&#xD;&#xA;Temp. = 25 C" VerticalAlignment="Top" Width="150"  Height="60" FontSize="14" Padding="2,2,2,2"/>
-        <TextBox x:Name="dmmDataReading" HorizontalAlignment="Center" Margin="0,102,0,0" TextWrapping="Wrap" 
-                 Text="Reading = 25 C" VerticalAlignment="Top" Width="150"  Height="60" FontSize="14" Grid.Column="1" Padding="2,2,2,2"/>
-        <Button x:Name="btnStartTest" Content="Start" HorizontalAlignment="Center" Margin="0,27,0,0" 
-                VerticalAlignment="Top" Width="72" FontSize="20" Click="btnStartTest_Click"/>
-        <Button x:Name="btnStopTest" Content="Stop" HorizontalAlignment="Center" Margin="0,27,0,0" 
+        <TextBox x:Name="i2cDataReading" HorizontalAlignment="Center" Margin="0,83,0,0" TextWrapping="Wrap" 
+                 Text="Reading = 0x00&#xD;&#xA;Temp. = 25 C" VerticalAlignment="Top" Width="280"  Height="267" FontSize="14" Padding="6,6,6,6"/>
+        <TextBox x:Name="dmmDataReading" HorizontalAlignment="Center" Margin="0,83,0,0" TextWrapping="Wrap" 
+                 Text="Reading = 25 C" VerticalAlignment="Top" Width="280"  Height="267" FontSize="14" Grid.Column="1" Padding="6,6,6,6"/>
+        <Button x:Name="btnStartTest" Content="Start" HorizontalAlignment="Center" Margin="0,15,0,0" 
+                VerticalAlignment="Top" Width="72" FontSize="20" Click="btnStartTest_Click" RenderTransformOrigin="0.514,0.094"/>
+        <Button x:Name="btnStopTest" Content="Stop" HorizontalAlignment="Center" Margin="0,15,0,0" 
                 VerticalAlignment="Top" Width="72" FontSize="20" Grid.Column="1" Click="btnStopTest_Click"/>
-        <Label Content="DUT I2C 讀值" HorizontalAlignment="Center" Margin="0,69,0,0" VerticalAlignment="Top" Width="150" 
+        <Label Content="DUT I2C 讀值" HorizontalAlignment="Center" Margin="0,55,0,0" VerticalAlignment="Top" Width="280" 
                VerticalContentAlignment="Center" FontSize="14" RenderTransformOrigin="0.512,-0.36" FontWeight="Bold" Padding="2,5,2,5"/>
-        <Label Content="DMM6500 讀值(TC)" HorizontalAlignment="Center" Margin="0,69,0,0" VerticalAlignment="Top" Width="150" 
+        <Label Content="DMM6500 讀值(TC)" HorizontalAlignment="Center" Margin="0,55,0,0" VerticalAlignment="Top" Width="280" 
                VerticalContentAlignment="Center" FontSize="14" RenderTransformOrigin="0.512,-0.36" FontWeight="Bold" Grid.Column="1" Padding="2,5,2,5"/>
-        <TextBox x:Name="txtStatus" HorizontalAlignment="Left" Margin="100,182,0,0" TextWrapping="Wrap" Text="Status" 
-                 VerticalAlignment="Top" Width="400" FontWeight="Bold" Height="60" Grid.ColumnSpan="2" Padding="2,2,2,2" FontSize="16"/>
+        <TextBox x:Name="txtStatus" HorizontalAlignment="Left" Margin="10,363,0,0" TextWrapping="Wrap" Text="Status" 
+                 VerticalAlignment="Top" Width="580" FontWeight="Bold" Height="92" Grid.ColumnSpan="2" Padding="6,6,6,6" FontSize="16"/>
 
     </Grid>
 </Window>

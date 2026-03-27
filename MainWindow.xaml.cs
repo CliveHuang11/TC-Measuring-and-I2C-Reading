@@ -1,5 +1,6 @@
 ﻿using System;
-using Ivi.Visa;
+//using Ivi.Visa;
+using NationalInstruments.Visa;
 using System.Globalization;
 using System.Data;
 using System.IO;
@@ -61,6 +62,9 @@ namespace TC_Measuring_and_I2C_Reading
         private const uint I2C_TRANSFER_OPTIONS_NACK_LAST_BYTE = 0x08;
         // 設備 USB 識別名稱
         private string _resourceNameDmm2 = "USB0::0x05E6::0x6500::04437055::INSTR"; // DMM6500, Serial-Number:04437055
+        // I2C register cache / table
+        private readonly Dictionary<byte, ushort> _i2cRegisters = new();
+        const byte AP72054Q_ADDR = 0x61;
 
         // === 4. 建構函式 (Constructor) ===
         public MainWindow()
@@ -77,8 +81,12 @@ namespace TC_Measuring_and_I2C_Reading
             // --- 初始化記憶體中的資料表 ---
             _testData = new DataTable();
             _testData.Columns.Add("Time", typeof(string));
-            _testData.Columns.Add("Reg Value", typeof(string));
+            _testData.Columns.Add("Reg Tj", typeof(string));
             _testData.Columns.Add("TC Value", typeof(string));
+            _testData.Columns.Add("Reg VIN", typeof(string));
+            _testData.Columns.Add("Reg VOUT", typeof(string));
+            _testData.Columns.Add("Reg StatusWord", typeof(string));
+            _testData.Columns.Add("Reg StatusTemp.", typeof(string));
 
             // --- 啟動 ---
             int intveralTime = 3;
@@ -151,15 +159,25 @@ namespace TC_Measuring_and_I2C_Reading
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] {ex.Message}");
+                //Console.WriteLine($"[ERROR] {ex.Message}");
+                string usbErr = $"[ERROR] {ex.Message}";
+                dmmDataReading.Text = usbErr;
             }
-            //var usbData = temperature.ToString("F2");
+            var usbData = temperature.ToString("F2");
             var i2cData = await Task.Run(() => PerformI2COperation());  // 透過 i2C 讀取 IC 溫度
 
             // 將資料加入 DataTable
-            _testData.Rows.Add(DateTime.Now.ToString("HH:mm:ss"), i2cData, "25"); //, usbData);
+            _i2cRegisters.TryGetValue(0x8D, out var val8D);
+            double tJ = val8D * 0.5;
+            _i2cRegisters.TryGetValue(0x88, out var val88);
+            double vin = val88 / 16.0;
+            _i2cRegisters.TryGetValue(0x8B, out var val8B);
+            double vout = val8B / 1024.0;
+            _i2cRegisters.TryGetValue(0x79, out var statusWord);
+            _i2cRegisters.TryGetValue(0x7D, out var statusTemperature);
+            _testData.Rows.Add(DateTime.Now.ToString("HH:mm:ss"), tJ, usbData, vin, vout, statusWord, statusTemperature); //, usbData);
             //dmmDataReading.Text = $"Reading = {usbData} C";
-            i2cDataReading.Text = $"Reading = {i2cData}";
+            i2cDataReading.Text = $"{i2cData}";
             txtStatus.Text = $"已記錄 {_testData.Rows.Count} 筆";
         }
 
@@ -190,36 +208,59 @@ namespace TC_Measuring_and_I2C_Reading
                 status = (uint)I2C_InitChannel(handle, ref config);
                 if (status != 0) return $"初始化失敗 (Error: {status})";
 
-                // 執行讀取 (從 0x61 的 reg 0x8B 讀回 2 Bytes)
-                // 注意：這裡我們只送出 0x8B，並且 options 只給 START (0x01)，不給 STOP
-                uint bytesWritten;
-                byte[] regAddr = new byte[] { 0x8B };
-                status = (uint)I2C_DeviceWrite(handle, 0x61,
-                         (uint)regAddr.Length, regAddr, out bytesWritten,
-                         I2C_TRANSFER_OPTIONS_START_BIT); // 只有 Start
-                byte[] readBuf = new byte[2];
-                uint bytesRead;
-                // Options 設為 START | STOP | NACK_LAST (0x01 | 0x02 | 0x08 = 11)
-                // 這樣會發送 Restart -> 讀取 -> 最後一個 Byte 給 NACK -> Stop
-                status = (uint)I2C_DeviceRead(handle, 0x61,
-                         (uint)readBuf.Length, readBuf, out bytesRead,
-                         I2C_TRANSFER_OPTIONS_START_BIT | I2C_TRANSFER_OPTIONS_STOP_BIT | I2C_TRANSFER_OPTIONS_NACK_LAST_BYTE);
+                // ===== 讀取 reg 0x88, VIN, 2-bytes =====
+                if (!ReadRegister(handle, AP72054Q_ADDR, 0x88, 2, out var buf88, out var err))
+                    return err;
+                byte low88 = buf88[0];
+                byte high88 = buf88[1];
+                ushort val88 = (ushort)(((high88 & 0b0000_0111) << 8) | low88);     // 只保留 bits[10:0]
+                _i2cRegisters[0x88] = val88;
 
-                if (status == 0)
+                // ===== 讀取 reg 0x8B, VOUT, 2-bytes =====
+                if (!ReadRegister(handle, AP72054Q_ADDR, 0x8B, 2, out var buf8B, out err))  
+                    return err;
+                byte low8B = buf8B[0];
+                byte high8B = buf8B[1];
+                ushort val8B = (ushort)((high8B << 8) | low8B);
+                _i2cRegisters[0x8B] = val8B;
+
+                // ===== 讀取 reg 0x8D, TEMPERATURE, 2-bytes =====
+                if (!ReadRegister(handle, AP72054Q_ADDR, 0x8D, 2, out var buf8D, out err))
+                    return err;
+                byte low8D = buf8D[0];
+                byte high8D = buf8D[1];
+                ushort val8D = (ushort)(((high8D & 0b0000_0111) << 8) | low8D);     // 只保留 bits[10:0]
+                _i2cRegisters[0x8D] = val8D;
+
+                // ===== Sends CLEAR_FAULT command before reading STATUS registers
+                byte[] cmd = { 0x03 };
+                status = (uint)I2C_DeviceWrite(handle, AP72054Q_ADDR, 1, cmd, out var bytesWritten, I2C_TRANSFER_OPTIONS_START_BIT | I2C_TRANSFER_OPTIONS_STOP_BIT);
+                if (status != 0 || bytesWritten != 1)
                 {
-                    // 假設 readBuffer[0] 是 Lower Byte, readBuffer[1] 是 Higher Byte
-                    byte lowerByte = readBuf[0];
-                    byte higherByte = readBuf[1];
-
-                    // 組合回 16-bit 數值 (例如: Higher << 8 | Lower)
-                    ushort combinedValue = (ushort)(((higherByte & 0b0000_0111) << 8) | lowerByte);
-
-                    return combinedValue.ToString();
+                    return $"CLEAR_FAULT failed (Status:{status}, BW:{bytesWritten})";
                 }
-                else
-                {
-                    return $"讀取失敗 (Error: {status})";
-                }
+
+                // ===== 讀取 reg 0x79, STATUS_WORD, 2-bytes =====
+                if (!ReadRegister(handle, AP72054Q_ADDR, 0x79, 2, out var buf79, out err))
+                    return err;
+                byte low79 = buf79[0];
+                byte high79 = buf79[1];
+                ushort val79 = (ushort)((high79 << 8) | low79);
+                _i2cRegisters[0x79] = val79;
+
+                // ===== 讀取 reg 0x7D, STATUS_TEMPERATURE, 1-bytes =====
+                if (!ReadRegister(handle, AP72054Q_ADDR, 0x7D, 1, out var buf7D, out err))
+                    return err;
+                _i2cRegisters[0x7D] = buf7D[0];
+
+
+                // ===== 一起回傳 =====
+                return
+                    $"Temp. = {(val8D * 0.5):F1} C \n(HiByte = 0x{high8D:X2}, LoByte = 0x{low8D:X2})\n\n" +     // N = -1
+                    $"VIN   = {(val88 / 16.0):F3} V \n(HiByte = 0x{high88:X2}, LoByte = 0x{low88:X2})\n\n" +      // N = -4
+                    $"VOUT  = {(val8B / 1024.0):F3} V \n(HiByte = 0x{high8B:X2}, LoByte = 0x{low8B:X2})\n\n" +    // N = -10
+                    $"STATUS_WORD = 0x{val79:X4}  \n(HiByte = 0x{high79:X2}, LoByte = 0x{low79:X2})\n\n" +
+                    $"STATUS_TEMPERATURE = 0x{buf7D[0]:X2}";
             }
             catch (Exception ex)
             {
@@ -227,13 +268,54 @@ namespace TC_Measuring_and_I2C_Reading
             }
             finally
             {
-                //  F. 無論成功或失敗，只要 handle 不是空的就關閉它
                 if (handle != IntPtr.Zero)
-                {
                     I2C_CloseChannel(handle);
-                }
             }
         }
+
+        private bool ReadRegister(IntPtr handle, byte slaveAddr, byte reg, int readLen, out byte[] data, out string error)
+        {
+            data = new byte[readLen];
+            error = string.Empty;
+
+            uint status;
+            uint bytesWritten, bytesRead;
+
+            // Write register address
+            status = (uint)I2C_DeviceWrite(handle, slaveAddr, 1, new byte[] { reg }, 
+                    out bytesWritten, I2C_TRANSFER_OPTIONS_START_BIT);
+
+            if (status != 0 || bytesWritten != 1)
+            {
+                error = $"Write reg 0x{reg:X2} failed (Status:{status}, BW:{bytesWritten})";
+                return false;
+            }
+
+            // Read data
+            status = (uint)I2C_DeviceRead(handle, slaveAddr, (uint)readLen, data, 
+                    out bytesRead, I2C_TRANSFER_OPTIONS_START_BIT | I2C_TRANSFER_OPTIONS_STOP_BIT | I2C_TRANSFER_OPTIONS_NACK_LAST_BYTE);
+
+            if (status != 0 || bytesRead != readLen)
+            {
+                error = $"Read reg 0x{reg:X2} failed (Status:{status}, BR:{bytesRead})";
+                return false;
+            }
+
+            return true;
+        }
+
+        private void UpdateRegister(byte reg, ushort value)
+        {
+            _i2cRegisters[reg] = value;
+        }
+
+        private bool TryGetRegister(byte reg, out ushort value)
+        {
+            return _i2cRegisters.TryGetValue(reg, out value);
+        }
+
+
+
 
 
         private static double ReadTemperature(string visaAddress)
@@ -286,12 +368,11 @@ namespace TC_Measuring_and_I2C_Reading
             }
         }
 
-
-
-
-
         
-        
+
+
+
+
 
     }
 }
